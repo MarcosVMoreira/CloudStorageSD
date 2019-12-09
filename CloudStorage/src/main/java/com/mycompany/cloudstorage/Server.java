@@ -1,5 +1,7 @@
 package com.mycompany.cloudstorage;
 
+
+
 import org.jgroups.JChannel;
 import org.jgroups.Message;
 import org.jgroups.ReceiverAdapter;
@@ -36,6 +38,12 @@ public class Server extends ReceiverAdapter {
     private final String desktopServerPath = "C:\\Users\\Marcos\\Desktop\\ServerFiles\\";
 
     View testeView;
+    
+    public static void main(String[] args) throws Exception {
+        new Server().start();
+    }
+    
+
 
     private void start() throws Exception {
         channel = new JChannel();
@@ -61,7 +69,7 @@ public class Server extends ReceiverAdapter {
             sendServerFilesToRecentLoggedUser(newView.getMembers().get(newView.getMembers().size() - 1));
 
             /*aqui eu detecto quando outro usuario entra na rede ou sai. Neste momento, devo enviar
-            pro cara que acabou de entrar o diretório dele que está no server, caso exista*/
+            pro cara que acabou de entrar os arquivos do diretório dele que está no server, caso exista*/
  /*se entrar um servidor na rede, tenho que espelhar meus dir atuais pra ele */
         } catch (Exception ex) {
             Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
@@ -80,7 +88,7 @@ public class Server extends ReceiverAdapter {
             if (folder.mkdir()) {
                 System.out.println("Created directory for new user.");
             } else {
-                System.out.println("Failed to create directory for new user (maybe ServerFiles folder dont exist yet.");
+                System.out.println("Failed to create directory for new user (maybe ServerFiles folder doesnt exist yet).");
             }
         } else {
             //se o usuário ja tem um diretório, tenho que mandar os arquivos pra ele
@@ -97,10 +105,26 @@ public class Server extends ReceiverAdapter {
     }
 
     public void receive(Message msg) {
+        System.out.println("Inside receive method "+channel.getAddress());
         String line = msg.getSrc() + ": " + msg.getObject();
-        System.out.println(line);
+        System.out.println("Linha "+line);
         synchronized (state) {
             state.add(line);
+        }
+        
+        System.out.println("Teste");
+        
+        File[] fileArray = msg.getObject();
+        
+                System.out.println("Testando ");
+
+        
+        System.out.println("Tamanho do arquivo: "+fileArray.length);
+        
+        System.out.println("Recebi uma lista de arquivos: ");
+        
+        for (File fileIt : fileArray) {
+            System.out.println("Arquivos: "+fileIt.getName());
         }
 
         /* aqui detecto quando o usuario enviar um arquivo novo pro server. Na verdade, ele irá enviar arquivos através do
@@ -148,7 +172,5 @@ public class Server extends ReceiverAdapter {
         }
     }
 
-    public static void main(String[] args) throws Exception {
-        new Server().start();
-    }
+
 }
