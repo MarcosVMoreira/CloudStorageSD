@@ -29,11 +29,12 @@ import org.jgroups.util.Util;
  *
  * @author Marcos
  */
-public class Cliente extends ReceiverAdapter  {
+public class Cliente extends ReceiverAdapter {
 
     //lib var
     JChannel channel;
     String user_name = System.getProperty("user.name", "n/a");
+    private Address meuAddress;
     final List<String> state = new LinkedList<String>();
 
     //my var
@@ -46,12 +47,17 @@ public class Cliente extends ReceiverAdapter  {
     }
 
     private void start() throws Exception {
-        channel = new JChannel();
-        channel.setReceiver(this);
-        channel.connect("BropDox");
-        channel.getState(null, 10000);
-        eventLoop();
-        channel.close();
+
+        try {
+            channel = new JChannel()
+                    .connect("BropDox")
+                    .setReceiver(this)
+                    .getState(null, 10000);
+            meuAddress = channel.getAddress();
+            eventLoop();
+        } catch (Exception e) {
+            System.out.println("Erro pra startar: " + e.getMessage());
+        }
     }
 
     public void viewAccepted(View newView) {
@@ -66,7 +72,7 @@ public class Cliente extends ReceiverAdapter  {
 
         try {
 
-            sendUserFilesToServer(newView.getMembers().get(newView.getMembers().size() - 1));
+            // sendUserFilesToServer(newView.getMembers().get(newView.getMembers().size() - 1));
 
             /*aqui eu detecto quando outro usuario entra na rede ou sai. Neste momento, devo enviar
             pro cara que acabou de entrar o diretório dele que está no server, caso exista*/
@@ -77,9 +83,6 @@ public class Cliente extends ReceiverAdapter  {
     }
 
     public void sendUserFilesToServer(Address user) throws IOException, Exception {
-
-        LinkedList<byte[]> fileList = new LinkedList<>();
-        byte[] fileContent;
 
         File folder = new File(desktopUserPath + user);
 
@@ -93,14 +96,15 @@ public class Cliente extends ReceiverAdapter  {
         } else {
             //se o usuário ja tem um diretório, tenho que mandar os arquivos pra ele
             for (File fileIt : folder.listFiles()) {
-                fileContent = Files.readAllBytes(fileIt.toPath());
-                fileList.add(fileContent);
+
+                Arquivo arquivo = new Arquivo(Utils.converterArquivoByte(fileIt), fileIt.getName());
+
+                Message message = new Message(null, arquivo);
+
+                channel.send(message);
+
             }
         }
-
-        Message message = new Message(null, fileList);
-        
-        channel.send(message);
 
     }
 
@@ -142,15 +146,16 @@ public class Cliente extends ReceiverAdapter  {
                 System.out.print("> ");
                 System.out.flush();
                 String line = in.readLine().toLowerCase();
-                sendUserFilesToServer(testeView.getMembers().get(testeView.getMembers().size() - 1));
+                System.out.println("chamando metodo "+meuAddress);
+                sendUserFilesToServer(meuAddress);
+                System.out.println("Chamado");
                 if (line.startsWith("quit") || line.startsWith("exit")) {
                     break;
                 }
                 line = "[" + user_name + "] " + line;
 
-                Message msg = new Message();
-
-                channel.send(msg);
+                // Message msg = new Message();
+                //channel.send(msg);
             } catch (Exception e) {
             }
         }
