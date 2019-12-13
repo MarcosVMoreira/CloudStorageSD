@@ -33,7 +33,8 @@ public class Server extends ReceiverAdapter {
     final List<String> state = new LinkedList<String>();
 
     //my var
-    private final String desktopServerPath = "C:\\Users\\Marcos\\Desktop\\ServerFiles\\";
+    private final String homePath = "C:\\Users\\Marcos\\Desktop\\ServerFiles\\";
+    //Paths.get(System.getProperty("user.home"));
 
     View testeView;
 
@@ -58,7 +59,7 @@ public class Server extends ReceiverAdapter {
 
     public void viewAccepted(View newView) {
 
-        testeView = newView;
+        /* testeView = newView;
 
         System.out.println("** view: " + newView);
 
@@ -66,11 +67,10 @@ public class Server extends ReceiverAdapter {
 
         System.out.println("User " + newView.getMembers().get(newView.getMembers().size() - 1) + " just logged in.");
 
-        /* try {
-
+        /* try {*/
 //            sendServerFilesToRecentLoggedUser(newView.getMembers().get(newView.getMembers().size() - 1));
 
-            /*aqui eu detecto quando outro usuario entra na rede ou sai. Neste momento, devo enviar
+        /*aqui eu detecto quando outro usuario entra na rede ou sai. Neste momento, devo enviar
             pro cara que acabou de entrar os arquivos do diretório dele que está no server, caso exista*/
  /*se entrar um servidor na rede, tenho que espelhar meus dir atuais pra ele */
  /*} catch (Exception ex) {
@@ -83,7 +83,7 @@ public class Server extends ReceiverAdapter {
         LinkedList<byte[]> fileList = new LinkedList<>();
         byte[] fileContent;
 
-        File folder = new File(desktopServerPath + user);
+        File folder = new File(homePath + user);
 
         if (!folder.exists()) {
             //se o usuário nao tem diretório, eu crio
@@ -108,59 +108,41 @@ public class Server extends ReceiverAdapter {
 
     public void receive(Message mensagemRecebida) {
 
-        Arquivo arquivoRecebido = mensagemRecebida.getObject();
+        if (mensagemRecebida.getObject() instanceof Arquivo) {
+            Arquivo arquivoRecebido = mensagemRecebida.getObject();
 
-        System.out.println("Nome: " + arquivoRecebido.getNomeArquivo());
-        System.out.println("Conteudo: " + arquivoRecebido.getConteudoArquivo());
-        System.out.println("Source: " + mensagemRecebida.getSrc());
+            File folder = new File(homePath + arquivoRecebido.getDonoArquivo());
 
-        File folder = new File(desktopServerPath + mensagemRecebida.getSrc());
-
-        if (!folder.exists()) {
-            //se o usuário nao tem diretório, eu crio
-            if (folder.mkdir()) {
-                System.out.println("Created directory for new user.");
-            } else {
-                System.out.println("Failed to create directory for new user (maybe UserFiles folder doesnt exist yet).");
+            if (!folder.exists()) {
+                //se o usuário nao tem diretório, eu crio
+                if (folder.mkdir()) {
+                    System.out.println("Created directory for new user.");
+                } else {
+                    System.out.println("Failed to create directory for new user (maybe UserFiles folder doesnt exist yet).");
+                }
             }
+
+            try {
+                Utils.converterByteArquivo(arquivoRecebido, homePath + arquivoRecebido.getDonoArquivo());
+
+            } catch (IOException ex) {
+                Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        } else {
+            System.out.println("recebi uma msgggg");
         }
 
-        try {
-            Utils.converterByteArquivo(arquivoRecebido, desktopServerPath + mensagemRecebida.getSrc());
-
-            /* aqui detecto quando o usuario enviar um arquivo novo pro server. Na verdade, ele irá enviar arquivos através do
-            Java WatchService que vai ficar rodando na maquina dele.
-            aqui devo reconhecer se virá um server conectando ou um usuario conectando e tomar a medida necessária */
-        } catch (IOException ex) {
-            Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
-        }
     }
 
-    /*public void criarArquivo(Arquivo arquivo) {
-        File novoArquivo = new File(
-                "../Clientes/"
-                + arquivo.getDiretorioArquivo()
-                + "/" + arquivo.getNomeArquivo());
-        try {
-            byte[] arquivoRecebidoBytes = arquivo.getArquivoBytes();
-            FileOutputStream fos = new FileOutputStream(novoArquivo);
-            fos.write(arquivoRecebidoBytes, 0, arquivoRecebidoBytes.length);
-            fos.close();
-        } catch (FileNotFoundException e) {
-            System.out.println("ERRO criarArquivo (NotFound), " + e.getMessage());
-        } catch (IOException e) {
-            System.out.println("ERRO criarArquivo (IO), " + e.getMessage());
-        }
-    }*/
     public void getState(OutputStream output) throws Exception {
-        synchronized (state) {
+         synchronized (state) {
             Util.objectToStream(state, new DataOutputStream(output));
         }
     }
 
     @SuppressWarnings("unchecked")
     public void setState(InputStream input) throws Exception {
-        List<String> list = (List<String>) Util.objectFromStream(new DataInputStream(input));
+        /*List<String> list = (List<String>) Util.objectFromStream(new DataInputStream(input));
         synchronized (state) {
             state.clear();
             state.addAll(list);
@@ -168,28 +150,7 @@ public class Server extends ReceiverAdapter {
         System.out.println("received state (" + list.size() + " messages in chat history):");
         for (String str : list) {
             System.out.println(str);
-        }
-    }
-
-    private void eventLoop() {
-        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
-        while (true) {
-            try {
-                System.out.print("> ");
-                System.out.flush();
-                String line = in.readLine().toLowerCase();
-                //sendServerFilesToRecentLoggedUser(testeView.getMembers().get(testeView.getMembers().size() - 1));
-                if (line.startsWith("quit") || line.startsWith("exit")) {
-                    break;
-                }
-                line = "[" + user_name + "] " + line;
-
-                Message msg = new Message();
-
-                channel.send(msg);
-            } catch (Exception e) {
-            }
-        }
+        }*/
     }
 
 }

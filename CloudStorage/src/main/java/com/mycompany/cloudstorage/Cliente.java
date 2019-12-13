@@ -8,9 +8,23 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.nio.file.FileSystems;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
+import static java.nio.file.StandardWatchEventKinds.ENTRY_CREATE;
+import static java.nio.file.StandardWatchEventKinds.ENTRY_DELETE;
+import static java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY;
+import java.nio.file.WatchEvent;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.jgroups.Address;
@@ -34,30 +48,17 @@ public class Cliente extends ReceiverAdapter {
     //lib var
     JChannel channel;
     String user_name = System.getProperty("user.name", "n/a");
-    private Address meuAddress;
+    private String loginUsuario;
     final List<String> state = new LinkedList<String>();
+    private WatchService watchService;
 
     //my var
     private final String desktopUserPath = "C:\\Users\\Marcos\\Desktop\\UserFiles\\";
 
     View testeView;
-
+    
     public static void main(String[] args) throws Exception {
-        new Cliente().start();
-    }
-
-    private void start() throws Exception {
-
-        try {
-            channel = new JChannel()
-                    .connect("BropDox")
-                    .setReceiver(this)
-                    .getState(null, 10000);
-            meuAddress = channel.getAddress();
-            eventLoop();
-        } catch (Exception e) {
-            System.out.println("Erro pra startar: " + e.getMessage());
-        }
+        new Cliente().eventLoop();
     }
 
     public void viewAccepted(View newView) {
@@ -82,7 +83,7 @@ public class Cliente extends ReceiverAdapter {
         }
     }
 
-    public void sendUserFilesToServer(Address user) throws IOException, Exception {
+    public void sendUserFilesToServer(String user) throws IOException, Exception {
 
         File folder = new File(desktopUserPath + user);
 
@@ -97,15 +98,16 @@ public class Cliente extends ReceiverAdapter {
             //se o usuário ja tem um diretório, tenho que mandar os arquivos pra ele
             for (File fileIt : folder.listFiles()) {
 
-                Arquivo arquivo = new Arquivo(Utils.converterArquivoByte(fileIt), fileIt.getName());
+                Arquivo arquivo = new Arquivo(Utils.converterArquivoByte(fileIt), fileIt.getName(), loginUsuario);
 
                 Message message = new Message(null, arquivo);
 
                 channel.send(message);
 
             }
-        }
+            //}
 
+        }
     }
 
     public void receive(Message msg) {
@@ -139,26 +141,68 @@ public class Cliente extends ReceiverAdapter {
         }
     }
 
-    private void eventLoop() {
-        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
-        while (true) {
-            try {
-                System.out.print("> ");
-                System.out.flush();
-                String line = in.readLine().toLowerCase();
-                System.out.println("chamando metodo "+meuAddress);
-                sendUserFilesToServer(meuAddress);
-                System.out.println("Chamado");
-                if (line.startsWith("quit") || line.startsWith("exit")) {
-                    break;
-                }
-                line = "[" + user_name + "] " + line;
+    private void eventLoop() throws IOException, InterruptedException, Exception {
+        
+        channel = new JChannel()
+                .connect("BropDox")
+                .setReceiver(this)
+                .getState(null, 10000);
 
-                // Message msg = new Message();
-                //channel.send(msg);
-            } catch (Exception e) {
+        checkarSeServerPossuiArquivos();
+
+        this.watchService = FileSystems.getDefault().newWatchService();
+
+        Path path = Paths.get(desktopUserPath + loginUsuario);
+
+        path.register(
+                watchService,
+                ENTRY_CREATE,
+                ENTRY_DELETE,
+                ENTRY_MODIFY);
+
+        while (true) {
+
+            WatchKey key;
+
+            while ((key = watchService.take()) != null) {
+                for (WatchEvent<?> event : key.pollEvents()) {
+                    System.out.println(
+                            "Event kind:" + event.kind()
+                            + ". File affected: " + event.context() + ".");
+                    sendUserFilesToServer(loginUsuario);
+                }
+                key.reset();
+            }
+
+        }
+
+    }
+
+    private void checkarSeServerPossuiArquivos() throws IOException, Exception {
+
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+
+        System.out.print("Insira seu login: ");
+        String line = in.readLine().toLowerCase();
+
+        loginUsuario = line;
+
+        File folder = new File(desktopUserPath + loginUsuario);
+
+        if (!folder.exists()) {
+            //se o usuário nao tem diretório, eu crio
+            if (folder.mkdir()) {
+                System.out.println("Created directory for new user.");
+
+            } else {
+                System.out.println("Failed to create directory for new user (maybe UserFiles folder doesnt exist yet).");
             }
         }
+
+        Message message = new Message(null, loginUsuario);
+
+        channel.send(message);
+
     }
 
 }
