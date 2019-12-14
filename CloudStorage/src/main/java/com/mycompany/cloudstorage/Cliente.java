@@ -47,45 +47,26 @@ public class Cliente extends ReceiverAdapter {
 
     //lib var
     JChannel channel;
-    String user_name = System.getProperty("user.name", "n/a");
     private String loginUsuario;
     final List<String> state = new LinkedList<String>();
     private WatchService watchService;
 
     //my var
-    private final String desktopUserPath = "C:\\Users\\Marcos\\Desktop\\UserFiles\\";
+    private final String homePath = "C:\\Users\\Marcos\\Desktop\\UserFiles\\";
 
     View testeView;
-    
+
     public static void main(String[] args) throws Exception {
         new Cliente().eventLoop();
     }
 
     public void viewAccepted(View newView) {
 
-        testeView = newView;
-
-        System.out.println("** view: " + newView);
-
-        System.out.println("members online right now: " + newView.getMembers());
-
-        System.out.println("User " + newView.getMembers().get(newView.getMembers().size() - 1) + " just logged in.");
-
-        try {
-
-            // sendUserFilesToServer(newView.getMembers().get(newView.getMembers().size() - 1));
-
-            /*aqui eu detecto quando outro usuario entra na rede ou sai. Neste momento, devo enviar
-            pro cara que acabou de entrar o diretório dele que está no server, caso exista*/
- /*se entrar um servidor na rede, tenho que espelhar meus dir atuais pra ele */
-        } catch (Exception ex) {
-            Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
-        }
     }
 
     public void sendUserFilesToServer(String user) throws IOException, Exception {
 
-        File folder = new File(desktopUserPath + user);
+        File folder = new File(homePath + user);
 
         if (!folder.exists()) {
             //se o usuário nao tem diretório, eu crio
@@ -105,21 +86,48 @@ public class Cliente extends ReceiverAdapter {
                 channel.send(message);
 
             }
-            //}
 
         }
     }
 
-    public void receive(Message msg) {
-        String line = msg.getSrc() + ": " + msg.getObject();
-        System.out.println(line);
-        synchronized (state) {
-            state.add(line);
+    public void receive(Message mensagemRecebida) {
+
+        if (mensagemRecebida.getSrc() != channel.address()) {
+            if (mensagemRecebida.getObject() instanceof Arquivo) {
+
+                Arquivo arquivoRecebido = mensagemRecebida.getObject();
+
+                File folder = new File(homePath + arquivoRecebido.getDonoArquivo());
+
+                if (!folder.exists()) {
+                    //se o usuário nao tem diretório, eu crio
+                    if (folder.mkdir()) {
+                        System.out.println("Created directory for new user.");
+                    } else {
+                        System.out.println("Failed to create directory for new user (maybe UserFiles folder doesnt exist yet).");
+                    }
+                }
+
+                try {
+                    Utils.converterByteArquivo(arquivoRecebido, homePath + arquivoRecebido.getDonoArquivo());
+
+                } catch (IOException ex) {
+                    Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
+                }
+            } else {
+
+                String mensagemString = mensagemRecebida.getObject();
+                if (mensagemString.equals("start")) {
+                    try {
+                        startListeningServer();
+                    } catch (Exception ex) {
+                        Logger.getLogger(Cliente.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+                }
+
+            }
         }
 
-        /* aqui detecto quando o usuario enviar um arquivo novo pro server. Na verdade, ele irá enviar arquivos através do
-        Java WatchService que vai ficar rodando na maquina dele.
-        aqui devo reconhecer se virá um server conectando ou um usuario conectando e tomar a medida necessária */
     }
 
     public void getState(OutputStream output) throws Exception {
@@ -135,24 +143,15 @@ public class Cliente extends ReceiverAdapter {
             state.clear();
             state.addAll(list);
         }
-        System.out.println("received state (" + list.size() + " messages in chat history):");
         for (String str : list) {
             System.out.println(str);
         }
     }
 
-    private void eventLoop() throws IOException, InterruptedException, Exception {
-        
-        channel = new JChannel()
-                .connect("BropDox")
-                .setReceiver(this)
-                .getState(null, 10000);
-
-        checkarSeServerPossuiArquivos();
-
+    private void startListeningServer() throws IOException, Exception {
         this.watchService = FileSystems.getDefault().newWatchService();
 
-        Path path = Paths.get(desktopUserPath + loginUsuario);
+        Path path = Paths.get(homePath + loginUsuario);
 
         path.register(
                 watchService,
@@ -166,19 +165,38 @@ public class Cliente extends ReceiverAdapter {
 
             while ((key = watchService.take()) != null) {
                 for (WatchEvent<?> event : key.pollEvents()) {
-                    System.out.println(
-                            "Event kind:" + event.kind()
-                            + ". File affected: " + event.context() + ".");
-                    sendUserFilesToServer(loginUsuario);
+
+                    WatchEvent.Kind tipoEvento = event.kind();
+
+                    if (tipoEvento == ENTRY_DELETE) {
+
+                        Message message = new Message(null, "delete " + ((WatchEvent<Path>) event).context() + " " + loginUsuario);
+
+                        channel.send(message);
+
+                    } else {
+                        sendUserFilesToServer(loginUsuario);
+                    }
+
                 }
                 key.reset();
             }
 
         }
+    }
+
+    private void eventLoop() throws IOException, InterruptedException, Exception {
+
+        channel = new JChannel()
+                .connect("BropDox")
+                .setReceiver(this)
+                .getState(null, 10000);
+
+        baixaArquivosServer();
 
     }
 
-    private void checkarSeServerPossuiArquivos() throws IOException, Exception {
+    private void baixaArquivosServer() throws IOException, Exception {
 
         BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
 
@@ -187,7 +205,7 @@ public class Cliente extends ReceiverAdapter {
 
         loginUsuario = line;
 
-        File folder = new File(desktopUserPath + loginUsuario);
+        File folder = new File(homePath + loginUsuario);
 
         if (!folder.exists()) {
             //se o usuário nao tem diretório, eu crio
@@ -202,6 +220,29 @@ public class Cliente extends ReceiverAdapter {
         Message message = new Message(null, loginUsuario);
 
         channel.send(message);
+
+        final Thread thread = new Thread(new Runnable() {
+            public void run() {
+                while (true) {
+                    BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+
+                    System.out.print("Para sair, digite \"sair\": ");
+                    
+                    String input = null;
+                    try {
+                       input = in.readLine().toLowerCase();
+                    } catch (IOException ex) {
+                        Logger.getLogger(Cliente.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+
+                    if (input.equals("sair")) {
+                        System.out.println("Saindo...");
+                        System.exit(0);
+                    }
+                }
+            }
+        });
+        thread.start();
 
     }
 

@@ -20,32 +20,39 @@ import java.util.logging.Logger;
 import org.jgroups.Address;
 
 
-/* 
-usei inputFileStream pra ler e outputFileStream pra escrever
-Eu pego o arquivo que esta na pasta com a classe File, pego os bytes dele,
-e crio um objeto de uma class que criei que possui bytes[] como u dos atributos
- ai eu passo esse objeto pela message*/
 public class Server extends ReceiverAdapter {
 
     //lib var
-    JChannel channel;
-    String user_name = System.getProperty("user.name", "n/a");
+    private static JChannel channel;
+
     final List<String> state = new LinkedList<String>();
 
     //my var
-    private final String homePath = "C:\\Users\\Marcos\\Desktop\\ServerFiles\\";
-    //Paths.get(System.getProperty("user.home"));
+    private static String homePath = "C:\\Users\\Marcos\\Desktop\\ServerFiles\\";
 
     View testeView;
 
     public static void main(String[] args) throws Exception {
         new Server().start();
+        homePath = homePath.concat(channel.address() + "\\");
+
+        File folder = new File(homePath);
+
+        if (!folder.exists()) {
+            //se o usuário nao tem diretório, eu crio
+            if (folder.mkdir()) {
+                System.out.println("Created directory for new server.");
+
+            } else {
+                System.out.println("Failed to create directory for new server (maybe ServerFukes folder doesnt exist yet).");
+            }
+        }
+
+        checkOnlineServers();
+
     }
 
     private void start() throws Exception {
-        /*  
-        //eventLoop();
-       // channel.close();*/
 
         try {
             channel = new JChannel()
@@ -57,25 +64,15 @@ public class Server extends ReceiverAdapter {
         }
     }
 
+    public static void checkOnlineServers() throws Exception {
+
+        Message message = new Message(null, "server");
+
+        channel.send(message);
+    }
+
     public void viewAccepted(View newView) {
 
-        /* testeView = newView;
-
-        System.out.println("** view: " + newView);
-
-        System.out.println("members online right now: " + newView.getMembers());
-
-        System.out.println("User " + newView.getMembers().get(newView.getMembers().size() - 1) + " just logged in.");
-
-        /* try {*/
-//            sendServerFilesToRecentLoggedUser(newView.getMembers().get(newView.getMembers().size() - 1));
-
-        /*aqui eu detecto quando outro usuario entra na rede ou sai. Neste momento, devo enviar
-            pro cara que acabou de entrar os arquivos do diretório dele que está no server, caso exista*/
- /*se entrar um servidor na rede, tenho que espelhar meus dir atuais pra ele */
- /*} catch (Exception ex) {
-            Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
-        }*/
     }
 
     public void sendServerFilesToRecentLoggedUser(Address user) throws IOException, Exception {
@@ -129,28 +126,101 @@ public class Server extends ReceiverAdapter {
                 Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
             }
         } else {
-            System.out.println("recebi uma msgggg");
+
+            String mensagemString = mensagemRecebida.getObject();
+
+            if (mensagemString.startsWith("delete")) {
+
+                File folder = new File(homePath + mensagemString.split(" ")[2]);
+
+                if (folder.exists()) {
+                    File f = new File(homePath + mensagemString.split(" ")[2] + "\\" + mensagemString.split(" ")[1]);
+                    f.delete();
+                }
+
+            } else if (!mensagemString.equals("server")) {
+                // primeiro login do usuário e, portanto, devo checkar se ele ja tem pasta no servidor. Se tem, envio os arquivos da pasta pra ele
+                File folder = new File(homePath + mensagemString);
+
+                if (folder.exists()) {
+                    //se o usuário nao tem diretório, eu crio
+
+                    for (File fileIt : folder.listFiles()) {
+
+                        try {
+                            Arquivo arquivo = new Arquivo(Utils.converterArquivoByte(fileIt), fileIt.getName(), mensagemString);
+                         
+                            Message message = new Message(mensagemRecebida.getSrc(), arquivo);
+                            channel.send(message);
+                        } catch (IOException ex) {
+                            Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
+                        } catch (Exception ex) {
+                            Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
+                        }
+
+                    }
+
+                } else {
+                    if (folder.mkdir()) {
+                        System.out.println("Created directory for new user.");
+
+                    } else {
+                        System.out.println("Failed to create directory for new user (maybe UserFiles folder doesnt exist yet).");
+                    }
+                }
+
+                Message message = new Message(mensagemRecebida.getSrc(), "start");
+                try {
+                    channel.send(message);
+                } catch (Exception ex) {
+                    Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
+                }
+
+            } else {
+                File folder = new File(homePath);
+
+                if (folder.exists()) {
+                    //se o usuário nao tem diretório, eu crio
+
+                    for (File fileIt : folder.listFiles()) {
+
+                        if (fileIt.isDirectory()) {
+
+                            File userFolder = new File(fileIt.getPath());
+
+                            for (File secondIt : userFolder.listFiles()) {
+
+                                try {
+                                    Arquivo arquivo = new Arquivo(Utils.converterArquivoByte(secondIt), secondIt.getName(), fileIt.getName());
+          
+                                    Message message = new Message(mensagemRecebida.getSrc(), arquivo);
+                                    channel.send(message);
+                                } catch (IOException ex) {
+                                    Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
+                                } catch (Exception ex) {
+                                    Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
+                                }
+                            }
+                        }
+
+                    }
+
+                }
+            }
+
         }
 
     }
 
     public void getState(OutputStream output) throws Exception {
-         synchronized (state) {
+        synchronized (state) {
             Util.objectToStream(state, new DataOutputStream(output));
         }
     }
 
     @SuppressWarnings("unchecked")
     public void setState(InputStream input) throws Exception {
-        /*List<String> list = (List<String>) Util.objectFromStream(new DataInputStream(input));
-        synchronized (state) {
-            state.clear();
-            state.addAll(list);
-        }
-        System.out.println("received state (" + list.size() + " messages in chat history):");
-        for (String str : list) {
-            System.out.println(str);
-        }*/
+
     }
 
 }
